@@ -21,8 +21,7 @@ time.sleep(2)  # camera stabiliseren
 # -----------------------------
 # Map en teller setup
 # -----------------------------
-home_directory = os.path.expanduser("~")
-images_directory = os.path.join(home_directory, "Desktop", "images")
+images_directory = "/home/maicowave/Desktop/images"
 os.makedirs(images_directory, exist_ok=True)
 
 count_file = os.path.join(images_directory, "picture_count.txt")
