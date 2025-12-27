@@ -1,12 +1,11 @@
 from picamera2 import Picamera2, Preview
-import time
-from datetime import datetime
 from gpiozero import Button
 import threading
 import os
+import time
 
 # -----------------------------
-# Camera setup (MAIN THREAD)
+# Camera setup
 # -----------------------------
 picam2 = Picamera2()
 
@@ -14,71 +13,59 @@ camera_config = picam2.create_preview_configuration(
     main={"size": (1920, 1080)}
 )
 picam2.configure(camera_config)
-
 picam2.start_preview(Preview.QTGL, width=549, height=412)
 picam2.start()
 
-time.sleep(2)  # camera laten stabiliseren
+time.sleep(2)  # camera stabiliseren
+
+# -----------------------------
+# Map en teller setup
+# -----------------------------
+home_directory = os.path.expanduser("~")
+images_directory = os.path.join(home_directory, "Desktop", "images")
+os.makedirs(images_directory, exist_ok=True)
+
+count_file = os.path.join(images_directory, "picture_count.txt")
+if not os.path.exists(count_file):
+    with open(count_file, "w") as f:
+        f.write("0")
 
 # -----------------------------
 # Button setup
 # -----------------------------
 button = Button(16)
+capture_lock = threading.Lock()
 
-capture_in_progress = False
-
-# -----------------------------
-# Zorg dat picture_count.txt bestaat
-# -----------------------------
-if not os.path.exists("picture_count.txt"):
-    with open("picture_count.txt", "w") as f:
-        f.write("0")
-
-# -----------------------------
-# Capture function (NO THREAD)
-# -----------------------------
 def capture():
-    global capture_in_progress
+    with capture_lock:
+        # Teller lezen
+        with open(count_file, "r") as f:
+            number = int(f.read())
 
-    with open("picture_count.txt", "r") as file:
-        number = int(file.read())
+        number += 1
+        filename = os.path.join(images_directory, f"pibz_{number}.jpg")
 
-    number += 1
+        # Foto opslaan
+        picam2.capture_file(filename)
+        print(f"Foto opgeslagen: {filename}")
 
-    home_directory = os.path.expanduser("~")
-    images_directory = os.path.join(home_directory, "Desktop", "images")
-    os.makedirs(images_directory, exist_ok=True)
-
-    filename = os.path.join(images_directory, f"pibz_{number}.jpg")
-    metadata = picam2.capture_file(filename)
-
-    with open("picture_count.txt", "w") as file:
-        file.write(str(number))
-
-    print(f"Foto opgeslagen: {filename}")
-    print(metadata)
-
-    capture_in_progress = False
+        # Teller bijwerken
+        with open(count_file, "w") as f:
+            f.write(str(number))
 
 # -----------------------------
-# Button monitor (THREAD OK)
+# Button monitor thread
 # -----------------------------
 def button_monitor():
-    global capture_in_progress
     while True:
-        if button.is_pressed and not capture_in_progress:
-            capture_in_progress = True
-            capture()
-            time.sleep(0.5)  # debounce
+        button.wait_for_press()
+        capture()
+        time.sleep(0.3)  # debounce
+
+threading.Thread(target=button_monitor, daemon=True).start()
 
 # -----------------------------
-# Start button thread
-# -----------------------------
-button_thread = threading.Thread(target=button_monitor, daemon=True)
-button_thread.start()
-
-# -----------------------------
-# Main loop (blijft draaien)
+# Main loop
 # -----------------------------
 try:
     while True:
